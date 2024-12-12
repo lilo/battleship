@@ -18,12 +18,14 @@
 
 .segment "ZEROPAGE"
 state:    .byte $0
-cursor_x:   .byte $0
-cursor_y:   .byte $0
+cursor_x: .byte $0
+cursor_y: .byte $0
 p1_moves: .byte $0
 p2_moves: .byte $0
-p1_map:   .byte $0
-p2_map:   .byte $0
+p1_ships: .byte $0
+p2_ships: .byte $0
+p1_hits:  .byte $0
+p2_hits:  .byte $0
 joypad1:  .byte $0
 joypad2:  .byte $0
 
