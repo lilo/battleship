@@ -1,20 +1,15 @@
 .segment "HEADER"
-  ; .byte "NES", $1A      ; iNES header identifier
-  .byte $4E, $45, $53, $1A
+  .byte $4E, $45, $53, $1A ; .byte "NES", $1A
   .byte 2               ; 2x 16KB PRG code
   .byte 1               ; 1x  8KB CHR data
   .byte %00000001       ; mapper 0000, ###, 1-vertically mirrored
 
 .segment "VECTORS"
-  ;; When an NMI happens (once per frame if enabled) the label nmi:
   .addr nmi
-  ;; When the processor first turns on or is reset, it will jump to the label reset:
   .addr reset
-  ;; External interrupt IRQ (unused)
-  .addr 0
+  .addr 0 ; IRQ
 
-; "nes" linker config requires a STARTUP section, even if it's empty
-.segment "STARTUP"
+.segment "STARTUP" ; required by linker
 
 .segment "ZEROPAGE"
 state:    .byte $0
@@ -31,7 +26,7 @@ joypad2:  .byte $0
 nametableLo: .byte $0
 nametableHi: .byte $0
 
-; Main code segment for the program
+
 .segment "CODE"
 
 reset:
@@ -68,8 +63,6 @@ clear_memory: ;
 vblankwait2:
   bit $2002 ; PPUSTATUS
   bpl vblankwait2
-
-
 
 load_palettes:
   lda $2002 ; read from PPUSTATUS to reset PPU internal registers
@@ -286,23 +279,3 @@ palettes:
 ; Character memory
 .segment "CHARS"
 .incbin "ascii.chr"
-  ; .byte %11111111 ;
-  ; .byte %10000001 ;
-  ; .byte %10000001 ;
-  ; .byte %10000001 ;
-  ; .byte %10000001 ;
-  ; .byte %10000001 ;
-  ; .byte %10000001 ;
-  ; .byte %11111111 ;
-  ; .byte $00, $00, $00, $00, $00, $00, $00, $00 !;\ Second plane ;
-
-  ; .byte %10000001 ;
-  ; .byte %01000010 ;
-  ; .byte %00100100 ;
-  ; .byte %00011000 ;
-  ; .byte %00011000 ;
-  ; .byte %00100100 ;
-  ; .byte %01000010 ;
-  ; .byte %10000001 ;
-  ; .byte $00, $00, $00, $00, $00, $00, $00, $00 !;\ Second plane ;
-
