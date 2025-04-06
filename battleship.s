@@ -12,51 +12,25 @@
 .segment "STARTUP" ; required by linker
 
 .segment "ZEROPAGE"
-state:    .byte $0
-cursor_x: .byte $0
-cursor_y: .byte $0
-p1_moves: .byte $0
-p2_moves: .byte $0
-p1_ships: .byte $0
-p2_ships: .byte $0
-p1_hits:  .byte $0
-p2_hits:  .byte $0
-joypad1:  .byte $0
-joypad2:  .byte $0
-nmi_cnt:  .byte $0
-nt_lo:    .byte $0
-nt_hi:    .byte $0
-scrflag:  .byte $0
-redraw:   .byte $0
-scrollx:  .byte $0
-scrolly:  .byte $0
-base_nt:  .byte %00000000 ;00=$2000;01=$2400;10=$2800;11=$2C00
-nmi_skip: .byte $0
-skip_cnt: .byte $0
+state:        .byte $0
+cursor_x:     .byte $0
+cursor_y:     .byte $0
+joypad1:      .byte $0
+joypad2:      .byte $0
+nmi_cnt:      .byte $0
+render_off:   .byte $0
+redraw:       .byte $0
+nmi_skip:     .byte $0
+skip_cnt:     .byte $0
+nam_hi:       .byte $0
+nam_lo:       .byte $0
 
-p1_grid:
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
+; buffered tile updates
+buf_pos_hi:   .byte $0
+buf_pos_lo:   .byte $0
 
-p2_grid:
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
-.byte $0, $0, $0, $0, $0, $0, $0, $0, $0, $0 ;
+p1_grid:  .res 100, $00
+p2_grid:  .res 100, $00
 
 
 KEY_RIGHT = %00000001
@@ -68,13 +42,20 @@ KEY_SELECT= %00100000
 KEY_B     = %01000000
 KEY_A     = %10000000
 
-D_SIDE = $11
-U_SIDE = $01
-R_SIDE = $02
-L_SIDE = $03
+; tiles
+LOW_DASH   = $11
+UP_DASH    = $01
+LEFT_DASH  = $03
+RIGHT_DASH = $02
 
-E_UL = $16
+; empty cell
+E_UL = $06
+E_UR = $07
+E_LL = $16
+E_LR = $17
+
 F_UL = $08
+
 
 .segment "CODE"
 .proc reset
@@ -119,23 +100,19 @@ F_UL = $08
         inx
         cpx #$20 ; 32
         bne @loop
+
         ; load nametables
         jsr draw_title
-        jsr draw_board
 
-        ; reset scrollx, scrolly
+        ; reset scroll
         lda #$00
-        sta $2006
-        sta $2006
-
-        ldx #$00
-        stx $2005
-        stx $2005
+        sta $2005
+        sta $2005
 
         ; enable rendering
         lda #%10000000	; VPHBSINN NMI(V), PPU master/slave (P), sprite height (H), background tile select (B), sprite tile select (S), increment mode (I), nametable select / X and Y scroll bit 8 (NN)
         sta $2000
-        lda #%00011000	; xxxSBxxx Enable Sprites and Background
+        lda #%00001000	; xxxSBxxx Enable Background rendering. No use of sprites in the game
         sta $2001 ; PPUMASK
 
 @forever:
@@ -151,65 +128,41 @@ F_UL = $08
         lda state
         cmp #$01
         bne @state2
-        sta scrflag ; scrflag = 1
-        inc scrolly
-        ldy scrolly
-        cpy #240
-        bne @wait_nmi
-        ldy #$00
-        sty scrolly
-        inc base_nt
-        inc base_nt
-        inc state ; state = 2 - p1 deploy
+
+        lda #$01
+        sta render_off
+
+        lda nmi_cnt
+:
+        cmp nmi_cnt
+        beq :-
+
+        jsr clear_nt0
+        jsr draw_board
+        jsr draw_p1_deploy
+
+        lda nmi_cnt
+:
+        cmp nmi_cnt
+        beq :-
+
+        lda #$00
+        sta render_off
+
+        lda nmi_cnt
+:
+        cmp nmi_cnt
+        beq :-
+
+        inc state
 
 @state2:
         lda state
         cmp #$02
         bne @state3
-        lda joypad1
-        and #KEY_LEFT
-        beq :+
-        dec cursor_x
-:
-        lda joypad1
-        and #KEY_RIGHT
-        beq :+
-        inc cursor_x
-:
-        lda joypad1
-        and #KEY_UP
-        beq :+
-        dec cursor_y
-:
-        lda joypad1
-        and #KEY_DOWN
-        beq :+
-        inc cursor_y
-:
-        lda joypad1
-        and #KEY_A
-        beq :+
-        inc cursor_y
-:
-        lda joypad1
-        and #KEY_B
-        beq :+
-        inc cursor_y
-:
-@wait_nmi2:        
-        lda nmi_cnt
-:
-        cmp nmi_cnt
-        beq :-
-        lda #$00
-        sta redraw
-
+ 
 @state3:
-@wait_nmi:        
-        lda nmi_cnt
-:
-        cmp nmi_cnt
-        beq :-
+        nop
 
 @jmpforever:
         jmp @forever
@@ -223,43 +176,22 @@ F_UL = $08
         pha
         tya
         pha
-        
+
         inc nmi_cnt
         jsr read_joypad
 
-        lda nmi_skip
+        lda #%00001000 ; render background
+        ldx render_off
         beq :+
-        inc skip_cnt
-        jmp @skip
+        lda #%00000000 ; turn off render
 :
-
-        lda scrflag
-        beq @endscroll
-
-@scroll:
-        lda #$00
-        sta $2006
-        sta $2006
-
-        ldx #$00
-        stx $2005
-        ldy scrolly
-        sty $2005
-
-@endscroll:
-
-        lda redraw
-        beq @endredraw
-@endredraw:
-
-        lda #%10000000
-        ora base_nt
-        sta $2000
-
-        lda #%00011000
         sta $2001
 
-@skip:
+        bit $2002
+        lda #$00 ; reset scroll
+        sta $2005
+        sta $2005
+
         pla
         tay
         pla
@@ -292,13 +224,6 @@ F_UL = $08
         rol joypad2
         bcc :-
         rts
-
-        ; jsr read_joypad ;
-        ; lda #%00000010 !;\ right ;
-        ; bit joypad1 ;
-        ; bne :+ ;
-        ; inc cursor_x ;
-        ; : ;
 .endproc
 
 .proc draw_title
@@ -342,11 +267,55 @@ F_UL = $08
         rts
 .endproc
 
-.proc draw_board
-        lda $2002 ; read from PPUSTATUS to reset PPU internal registers
+.proc clear_nt0
+        bit $2002
 
-        ; 282A - text
-        lda #$28
+        lda #$20
+        sta $2006
+        lda #$00
+        sta $2006
+        ldx #$00
+:
+        sta $2007
+        inx
+        bne :-
+
+        lda #$21
+        sta $2006
+        lda #$00
+        sta $2006
+        ldx #$00
+:
+        sta $2007
+        inx
+        bne :-
+
+        lda #$22
+        sta $2006
+        lda #$00
+        sta $2006
+        ldx #$00
+:
+        sta $2007
+        inx
+        bne :-
+
+        lda #$23
+        sta $2006
+        lda #$00
+        sta $2006
+        ldx #$c0
+:
+        sta $2007
+        dex
+        bne :-
+
+        rts
+.endproc
+
+.proc draw_p1_deploy
+        ; 202A (x=10, y=1) - text
+        lda #$20
         sta $2006
         lda #$2A
         sta $2006
@@ -359,19 +328,122 @@ F_UL = $08
         inx
         jmp :-
         :
+        rts
+.endproc
 
-        ; 2866 - grid 0,0
-        lda #$28
+.proc draw_board
+        ; 2066 (6,3) - grid upper left tile
+        lda #$20
         sta $2006
         lda #$66
         sta $2006
 
-        lda #$11 ; underscore
+        lda #LOW_DASH
         ldx #20
         :
         sta $2007
         dex
         bne :-
+
+        ; 2086 (6,4)- upper half of cell tiles
+        ldy #10
+
+        lda #$20
+        sta nam_hi
+        lda #$86
+        sta nam_lo
+
+@fill_row:
+        lda nam_hi
+        sta $2006
+        lda nam_lo
+        sta $2006
+        ldx #10
+@fill_row_top:
+        lda #E_UL
+        sta $2007
+        lda #E_UR
+        sta $2007
+        dex
+        bne @fill_row_top
+
+        clc
+        lda nam_lo
+        adc #$20
+        sta nam_lo
+        bcc :+
+        inc nam_hi
+:
+
+        lda nam_hi
+        sta $2006
+        lda nam_lo
+        sta $2006
+
+        ldx #10
+@fill_row_bottom:
+        lda #E_LL
+        sta $2007
+        lda #E_LR
+        sta $2007
+        dex
+        bne @fill_row_bottom
+
+        dey
+        beq @rows_done
+        clc
+        lda nam_lo
+        adc #$20
+        sta nam_lo
+        bcc :+
+        inc nam_hi
+:
+        jmp @fill_row
+
+@rows_done:
+        ; draw frame around cells
+        lda #$23
+        sta $2006
+        lda #$06
+        sta $2006
+        ldx #20
+:
+        lda #UP_DASH
+        sta $2007
+        dex
+        bne :-
+
+        ; draw vertical frame
+        ; 2065, 207a
+        lda #%10000100	; increment mode (I)=1, inc by 32
+        sta $2000
+
+        lda #$20
+        sta $2006
+        lda #$85
+        sta $2006
+
+        ldx #20
+:
+        lda #RIGHT_DASH
+        sta $2007
+        dex
+        bne :-
+
+        lda #$20
+        sta $2006
+        lda #$9a
+        sta $2006
+
+        ldx #20
+:
+        lda #LEFT_DASH
+        sta $2007
+        dex
+        bne :-
+
+        lda #%10000000	; increment mode (I)=0, inc by 1
+        sta $2000
 
         rts
 .endproc
@@ -388,7 +460,7 @@ p2_attack: .asciiz "P2 attack"
 palettes:
   ; Background Palette
 ;.byte $0f, $05, $00, $00 ; p0
-.byte $0f, $30, $00, $00 ; p0
+.byte $0f, $20, $00, $00 ; p0
 .byte $0f, $01, $00, $00 ; p1
 .byte $0f, $05, $00, $00 ; p2
 .byte $0f, $00, $00, $00 ; p3
