@@ -122,7 +122,7 @@ F_UL = $08
         lda joypad1
         and #KEY_START
         beq @forever
-        inc state ; state = 1 - scroll
+        inc state
 
 @state1:
         lda state
@@ -160,7 +160,8 @@ F_UL = $08
         lda state
         cmp #$02
         bne @state3
- 
+
+        jsr update_cursor
 @state3:
         nop
 
@@ -168,6 +169,61 @@ F_UL = $08
         jmp @forever
 .endproc
 
+.proc update_cursor
+        lda joypad1
+        and #KEY_UP
+        beq @exit_up
+@wait_release_up:
+        lda joypad1
+        and #KEY_UP
+        bne @wait_release_up
+        dec cursor_x
+        bpl @exit_up
+        lda #00
+        sta cursor_x
+@exit_up:
+        lda joypad1
+        and #KEY_DOWN
+        beq @skip_x
+@wait_release_down:
+        lda joypad1
+        and #KEY_DOWN
+        bne @wait_release_down
+        lda cursor_x
+        clc
+        cmp #09
+        bcs @skip_x
+        inc cursor_x
+@skip_x:
+
+        lda joypad1
+        and #KEY_LEFT
+        beq @exit_left
+@wait_release_left:
+        lda joypad1
+        and #KEY_LEFT
+        bne @wait_release_left
+        dec cursor_y
+        bpl @exit_left
+        lda #00
+        sta cursor_y
+@exit_left:
+
+        lda joypad1
+        and #KEY_RIGHT
+        beq @skip_y
+@wait_release_right:
+        lda joypad1
+        and #KEY_RIGHT
+        bne @wait_release_right
+        lda cursor_y
+        clc
+        cmp #09
+        bcs @skip_y
+        inc cursor_y
+@skip_y:
+        rts
+.endproc
 
 .proc nmi
         php
