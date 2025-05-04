@@ -122,6 +122,10 @@ F_UL = $08
         lda joypad1
         and #KEY_START
         beq @forever
+@wait_release_start:
+        lda joypad1
+        and #KEY_START
+        bne @wait_release_start
         inc state
 
 @state1:
