@@ -374,10 +374,10 @@ F_UL = $08
 .endproc
 
 .proc draw_p1_deploy
-        ; 202A (x=10, y=1) - text
+        ; 204A (x=10, 2=1) - text
         lda #$20
         sta $2006
-        lda #$2A
+        lda #$4A
         sta $2006
 
         ldx #$00
